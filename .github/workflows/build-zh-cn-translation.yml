@@ -1,0 +1,52 @@
+name: build-zh-cn-translation
+
+on:
+  push:
+    branches:
+      - patch-1
+    paths:
+      - ".github/workflows/build-zh-cn-translation.yml"
+      - "dist/languages/zh_CN.ts"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-translation:
+    runs-on: windows-2022
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install Qt Linguist tools
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qttools
+          cache: true
+
+      - name: Compile Chinese translation only
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path "output/languages" | Out-Null
+          $lrelease = Join-Path $env:QT_ROOT_DIR "bin/lrelease.exe"
+          if (!(Test-Path $lrelease)) {
+            throw "lrelease.exe not found: $lrelease"
+          }
+          & $lrelease "dist/languages/zh_CN.ts" -qm "output/languages/zh_CN.qm"
+          if (!(Test-Path "output/languages/zh_CN.qm")) {
+            throw "zh_CN.qm was not generated"
+          }
+          Get-Item "output/languages/zh_CN.qm" | Format-List Name,Length
+
+      - name: Upload QM translation
+        uses: actions/upload-artifact@v4
+        with:
+          name: lichii-zh-cn-translation
+          path: output/languages/zh_CN.qm
+          if-no-files-found: error
+          retention-days: 14
