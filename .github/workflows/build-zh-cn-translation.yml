@@ -19,25 +19,25 @@ jobs:
       - name: Check out source
         uses: actions/checkout@v4
 
-      - name: Install Qt Linguist tools
-        uses: jurplel/install-qt-action@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
         with:
-          version: "6.8.3"
-          host: windows
-          target: desktop
-          arch: win64_msvc2022_64
-          modules: qttools
-          cache: true
+          python-version: "3.12"
+
+      - name: Install Qt Linguist compiler
+        shell: pwsh
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install PySide6==6.8.3
+          if (!(Get-Command pyside6-lrelease -ErrorAction SilentlyContinue)) {
+            throw "pyside6-lrelease command was not installed"
+          }
 
       - name: Compile Chinese translation only
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force -Path "output/languages" | Out-Null
-          $lrelease = Join-Path $env:QT_ROOT_DIR "bin/lrelease.exe"
-          if (!(Test-Path $lrelease)) {
-            throw "lrelease.exe not found: $lrelease"
-          }
-          & $lrelease "dist/languages/zh_CN.ts" -qm "output/languages/zh_CN.qm"
+          pyside6-lrelease "dist/languages/zh_CN.ts" -qm "output/languages/zh_CN.qm"
           if (!(Test-Path "output/languages/zh_CN.qm")) {
             throw "zh_CN.qm was not generated"
           }
