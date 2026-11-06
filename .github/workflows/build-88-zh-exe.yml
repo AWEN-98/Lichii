@@ -1,0 +1,110 @@
+name: Lichii build-88 Chinese EXE only
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [nx2]
+    paths:
+      - ".github/workflows/build-88-zh-exe.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  windows-zh-exe:
+    name: Build Windows MSVC Chinese lichii.exe
+    runs-on: windows-2022
+    env:
+      SCCACHE_DIR: ${{ github.workspace }}/.sccache
+      SCCACHE_CACHE_SIZE: 3G
+
+    steps:
+      - name: Check out official Lichii build-88 source
+        uses: actions/checkout@v5
+        with:
+          repository: zortos293/Lichii
+          ref: 55532f2d814215aaf32a76c214cf129f2cb6282b
+
+      - name: Set up MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Install Qt on Windows
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: "6.8.3"
+          host: windows
+          target: desktop
+          arch: win64_msvc2022_64
+          modules: qtcharts
+          cache: true
+
+      - name: Install sccache on Windows
+        shell: pwsh
+        run: |
+          $zip = Join-Path $env:RUNNER_TEMP 'sccache.zip'
+          Invoke-WebRequest -OutFile $zip https://github.com/mozilla/sccache/releases/download/v0.19.0/sccache-v0.19.0-x86_64-pc-windows-msvc.zip
+          Expand-Archive $zip -DestinationPath (Join-Path $env:RUNNER_TEMP 'sccache')
+          $bin = (Get-ChildItem -Recurse -Filter sccache.exe (Join-Path $env:RUNNER_TEMP 'sccache')).DirectoryName
+          $bin | Out-File -Append -Encoding utf8 $env:GITHUB_PATH
+
+      - name: Install Vulkan SDK on Windows
+        shell: pwsh
+        run: ./tools/windows/install-vulkan-sdk.ps1
+
+      - name: Verify Vulkan tools on Windows
+        shell: pwsh
+        run: glslangValidator --version
+
+      - name: Restore CPM downloads
+        id: cpm-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/cpm
+          key: zh-build88-cpm-windows-v2
+          restore-keys: |
+            cpm-windows-x86_64-v2-
+
+      - name: Restore compiler objects
+        id: compiler-cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .sccache
+          key: zh-build88-sccache-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            objects-windows-x86_64-v2-
+
+      - name: Configure Windows with built-in Chinese translation
+        shell: bash
+        run: >-
+          cmake -S . -B build/release -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DBUILD_TESTING=OFF
+          -DYUZU_TESTS=OFF
+          -DYUZU_CMD=OFF
+          -DYUZU_ROOM=OFF
+          -DYUZU_ROOM_STANDALONE=OFF
+          -DYUZU_USE_BUNDLED_QT=OFF
+          -DYUZU_USE_BUNDLED_SDL3=ON
+          -DENABLE_QT_TRANSLATION=ON
+          -DENABLE_UPDATE_CHECKER=OFF
+          -DLICHII_BUILD_TAG=build-88
+          -DLICHII_BUILD_PLATFORM=windows-x86_64
+          -DUSE_DISCORD_PRESENCE=OFF
+          -DCMAKE_C_COMPILER_LAUNCHER=sccache
+          -DCMAKE_CXX_COMPILER_LAUNCHER=sccache
+
+      - name: Build only lichii.exe
+        shell: bash
+        run: |
+          sccache --zero-stats
+          cmake --build build/release --target yuzu --parallel
+          sccache --show-stats
+          test -s build/release/bin/lichii.exe
+
+      - name: Upload ONLY lichii.exe
+        uses: actions/upload-artifact@v4
+        with:
+          name: Lichii-build-88-zh-CN-MSVC-EXE
+          path: build/release/bin/lichii.exe
+          if-no-files-found: error
+          retention-days: 30
